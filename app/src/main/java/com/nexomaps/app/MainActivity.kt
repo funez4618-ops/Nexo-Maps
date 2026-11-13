@@ -112,9 +112,10 @@ class MainActivity : AppCompatActivity() {
                 userMarker?.position = point
             }
             if (isTracking) map?.animateCamera(CameraUpdateFactory.newLatLng(point))
-            if (location.speed < 0.7f) status.text = "Detenido · ubicación actualizada"
-            else if (!isVehicleMode) status.text = "Modo peatón · siguiendo tu caminata"
-            else status.text = "Modo vehículo · siguiendo tu recorrido"
+            val accuracyText = if (location.hasAccuracy()) " · precisión ±" + location.accuracy.toInt() + " m" else ""
+            if (location.speed < 0.7f) status.text = "Detenido · GPS actualizado$accuracyText"
+            else if (!isVehicleMode) status.text = "Modo peatón · siguiendo tu caminata$accuracyText"
+            else status.text = "Modo vehículo · siguiendo tu recorrido$accuracyText"
         }
     }
 
