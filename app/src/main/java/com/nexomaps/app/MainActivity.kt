@@ -71,8 +71,30 @@ class MainActivity : AppCompatActivity() {
     private var currentDestinationName: String? = null
     private var currentDestinationPoint: LatLng? = null
     private var lastRouteInstructions: List<String> = emptyList()
-    private val mapStyles = arrayOf("Mapa estándar", "Mapa claro", "Mapa Liberty")
-    private val mapStyleUrls = arrayOf("https://demotiles.maplibre.org/style.json", "https://tiles.openfreemap.org/styles/positron", "https://tiles.openfreemap.org/styles/liberty")
+    private val mapStyles = arrayOf("Satélite realista", "Mapa estándar", "Mapa claro", "Mapa Liberty")
+    private val mapStyleUrls = arrayOf("", "https://demotiles.maplibre.org/style.json", "https://tiles.openfreemap.org/styles/positron", "https://tiles.openfreemap.org/styles/liberty")
+
+    private fun buildMapStyle(index: Int): Style.Builder {
+        if (index == 0) {
+            val satelliteStyle = """{
+              "version": 8,
+              "sources": {
+                "nexo-satellite": {
+                  "type": "raster",
+                  "tiles": ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                  "tileSize": 256,
+                  "maxzoom": 19,
+                  "attribution": "Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+                }
+              },
+              "layers": [
+                {"id": "nexo-satellite-layer", "type": "raster", "source": "nexo-satellite"}
+              ]
+            }"""
+            return Style.Builder().fromJson(satelliteStyle)
+        }
+        return Style.Builder().fromUri(mapStyleUrls[index])
+    }
     private val timerHandler = Handler(Looper.getMainLooper())
     private val timerTick = object : Runnable {
         override fun run() {
@@ -230,7 +252,7 @@ class MainActivity : AppCompatActivity() {
             readyMap.uiSettings.isRotateGesturesEnabled = true
             readyMap.uiSettings.isZoomGesturesEnabled = true
             readyMap.uiSettings.isScrollGesturesEnabled = true
-            readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) { loadedStyle ->
+            readyMap.setStyle(buildMapStyle(preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex))) { loadedStyle ->
                 add3DBuildings(loadedStyle)
                 readyMap.animateCamera(
                     CameraUpdateFactory.newCameraPosition(
@@ -356,7 +378,7 @@ class MainActivity : AppCompatActivity() {
                 preferences.edit().putInt("map_style", which).apply()
                 val camera = map?.cameraPosition
                 status.text = "Cambiando a ${mapStyles[which]}..."
-                map?.setStyle(Style.Builder().fromUri(mapStyleUrls[which])) { loadedStyle ->
+                map?.setStyle(buildMapStyle(which)) { loadedStyle ->
                     add3DBuildings(loadedStyle)
                     if (camera != null) map?.animateCamera(CameraUpdateFactory.newCameraPosition(camera))
                     lastKnownPoint?.let { point ->
