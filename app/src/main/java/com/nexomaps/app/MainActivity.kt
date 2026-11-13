@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            startTripTimer()
             val point = LatLng(location.latitude, location.longitude)
             lastKnownPoint = point
             // Speed-based mode suggestion: walking below 5.5 m/s, vehicle above it.
@@ -310,10 +311,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rememberHistory(query: String) {
-        val history = preferences.getString("history_ordered", "")?.split("\\n")?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
+        val history = preferences.getString("history_ordered", "")?.split("\n")?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
         history.remove(query)
         history.add(0, query)
-        preferences.edit().putString("history_ordered", history.take(15).joinToString("\\n")).apply()
+        preferences.edit().putString("history_ordered", history.take(15).joinToString("\n")).apply()
     }
 
     private fun saveCurrentFavorite() {
@@ -331,7 +332,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSavedPlaces(key: String, title: String) {
         val saved = if (key == "history") {
-            preferences.getString("history_ordered", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+            preferences.getString("history_ordered", "")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
         } else {
             preferences.getStringSet(key, emptySet())?.toList()?.sorted() ?: emptyList()
         }
@@ -607,7 +608,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onPause() { if (::locationManager.isInitialized) locationManager.removeUpdates(gpsListener); super.onPause(); mapView.onPause() }
-    override fun onResume() { super.onResume(); mapView.onResume() }
+    override fun onResume() {
+        super.onResume()
+        mapView.onResume()
+        val hasFine = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (isTracking && (hasFine || hasCoarse)) startGpsUpdates()
+    }
     override fun onStop() { mapView.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
