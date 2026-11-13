@@ -162,7 +162,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(16, 27, 53))
             elevation = 12f
         }
-        addControl(controls, "Seguir") { goToMyLocation() }
+        addControl(controls, "Seguir / Pausar") { toggleFollow() }
         addControl(controls, "−") { zoomBy(-1.0) }
         addControl(controls, "+") { zoomBy(1.0) }
         addControl(controls, "Vista 3D") { toggleTilt() }
@@ -288,8 +288,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestRoute(destination: LatLng, destinationName: String) {
-        val origin = lastKnownPoint ?: map?.cameraPosition?.target
-        if (origin == null) { Toast.makeText(this, "Activa Seguir para obtener tu ubicación.", Toast.LENGTH_LONG).show(); return }
+        val origin = lastKnownPoint
+        if (origin == null) { Toast.makeText(this, "Primero activa Seguir y espera a que el GPS encuentre tu ubicación.", Toast.LENGTH_LONG).show(); return }
         status.text = "Calculando ruta hacia $destinationName..."
         Thread {
             var connection: HttpURLConnection? = null
@@ -317,6 +317,16 @@ class MainActivity : AppCompatActivity() {
             finally { connection?.disconnect() }
         }.start()
     }
+    private fun toggleFollow() {
+        if (isTracking) {
+            isTracking = false
+            locationManager.removeUpdates(gpsListener)
+            status.text = "Seguimiento pausado · pulsa Seguir para reanudar"
+        } else {
+            goToMyLocation()
+        }
+    }
+
     private fun goToMyLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
