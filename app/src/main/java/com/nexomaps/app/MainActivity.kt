@@ -40,6 +40,10 @@ import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.FillExtrusionLayer
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.expressions.Expression
 import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
@@ -210,7 +214,8 @@ class MainActivity : AppCompatActivity() {
             readyMap.uiSettings.isRotateGesturesEnabled = true
             readyMap.uiSettings.isZoomGesturesEnabled = true
             readyMap.uiSettings.isScrollGesturesEnabled = true
-            readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) {
+            readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) { loadedStyle ->
+                add3DBuildings(loadedStyle)
                 readyMap.animateCamera(
                     CameraUpdateFactory.newCameraPosition(
                         CameraPosition.Builder().target(LatLng(20.0, 0.0)).zoom(1.8).build()
@@ -218,6 +223,28 @@ class MainActivity : AppCompatActivity() {
                 )
                 status.text = "Mapa mundial cargado · Activa Seguir para moverte"
             }
+        }
+    }
+
+    private fun add3DBuildings(style: Style) {
+        // OpenFreeMap exposes real OpenStreetMap building footprints and height attributes.
+        if (style.getSource("openmaptiles") == null || style.getLayer("nexo-3d-buildings") != null) return
+        try {
+            val buildings = FillExtrusionLayer("nexo-3d-buildings", "openmaptiles").apply {
+                sourceLayer = "building"
+                minZoom = 14f
+                setFilter(Expression.has("render_height"))
+                setProperties(
+                    PropertyFactory.fillExtrusionColor(Color.rgb(222, 218, 204)),
+                    PropertyFactory.fillExtrusionHeight(Expression.get("render_height")),
+                    PropertyFactory.fillExtrusionBase(Expression.get("render_min_height")),
+                    PropertyFactory.fillExtrusionOpacity(0.94f)
+                )
+            }
+            val firstLabel = style.layers.firstOrNull { it is SymbolLayer }?.id
+            if (firstLabel != null) style.addLayerBelow(buildings, firstLabel) else style.addLayer(buildings)
+        } catch (_: Exception) {
+            runOnUiThread { status.text = "Mapa cargado · edificios 3D no disponibles en este estilo" }
         }
     }
 
@@ -302,7 +329,8 @@ class MainActivity : AppCompatActivity() {
                 preferences.edit().putInt("map_style", which).apply()
                 val camera = map?.cameraPosition
                 status.text = "Cambiando a ${mapStyles[which]}..."
-                map?.setStyle(Style.Builder().fromUri(mapStyleUrls[which])) {
+                map?.setStyle(Style.Builder().fromUri(mapStyleUrls[which])) { loadedStyle ->
+                    add3DBuildings(loadedStyle)
                     if (camera != null) map?.animateCamera(CameraUpdateFactory.newCameraPosition(camera))
                     lastKnownPoint?.let { point ->
                         userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))))
@@ -605,7 +633,7 @@ class MainActivity : AppCompatActivity() {
         isTilted = !isTilted
         map?.animateCamera(CameraUpdateFactory.newCameraPosition(
             CameraPosition.Builder().target(current.target ?: LatLng(20.0, 0.0))
-                .zoom(current.zoom.coerceAtLeast(14.0))
+                .zoom(current.zoom.coerceAtLeast(15.5))
                 .tilt(if (isTilted) 55.0 else 0.0)
                 .bearing(current.bearing).build()
         ))
