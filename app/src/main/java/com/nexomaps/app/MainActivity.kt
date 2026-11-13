@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var isTilted = false
     private var userMarker: Marker? = null
     private var isVehicleMode = false
+    private var selectedModel = "🚶 Hombre"
     private var isTracking = false
     private lateinit var tripTime: TextView
     private var tripStartedAt: Long? = null
@@ -77,11 +78,10 @@ class MainActivity : AppCompatActivity() {
         override fun onLocationChanged(location: Location) {
             val point = LatLng(location.latitude, location.longitude)
             // Speed-based mode suggestion: walking below 5.5 m/s, vehicle above it.
-            val detectedVehicle = location.hasSpeed() && location.speed >= 5.5f
+            val detectedVehicle = selectedModel !in listOf("🚶 Hombre", "🚶‍♀️ Mujer")
             if (detectedVehicle != isVehicleMode) {
                 isVehicleMode = detectedVehicle
                 refreshUserMarker(point)
-                status.text = if (isVehicleMode) "Modo vehículo · movimiento detectado" else "Modo peatón · caminando"
             }
             if (userMarker == null) {
                 userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this@MainActivity).fromBitmap(createAvatarBitmap(isVehicleMode))))
@@ -134,6 +134,15 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showSearchDialog() }
         }
         header.addView(search, LinearLayout.LayoutParams(-1, 50))
+        val modelButton = Button(this).apply {
+            text = "🚘  Elegir personaje o vehículo"
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(35, 49, 76))
+            setOnClickListener { showModelPicker() }
+        }
+        header.addView(modelButton, LinearLayout.LayoutParams(-1, 46).apply { topMargin = 6 })
         root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
             setMargins(12, 12, 12, 0)
         })
@@ -196,6 +205,27 @@ class MainActivity : AppCompatActivity() {
         parent.addView(button, LinearLayout.LayoutParams(0, 48, 1f).apply {
             setMargins(3, 0, 3, 0)
         })
+    }
+
+    private fun showModelPicker() {
+        val models = arrayOf(
+            "🚶 Hombre", "🚶‍♀️ Mujer", "🏎️ Deportivo", "🚗 Sedán",
+            "🚙 SUV", "🛻 Pickup", "🚛 Pipa de gas", "🚌 Autobús",
+            "🚐 Combi", "🛺 Bicitaxi", "🏍️ Motocicleta", "🚲 Bicicleta"
+        )
+        val current = models.indexOf(selectedModel).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Selecciona tu personaje o vehículo")
+            .setSingleChoiceItems(models, current) { dialog, which ->
+                selectedModel = models[which]
+                isVehicleMode = which >= 2
+                val position = userMarker?.position
+                if (position != null) refreshUserMarker(position)
+                status.text = "Modelo seleccionado: $selectedModel"
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
     }
 
     private fun showSearchDialog() {
@@ -294,20 +324,21 @@ class MainActivity : AppCompatActivity() {
         else { userMarker?.position = point; userMarker?.icon = icon }
     }
 
-    // Temporary map marker artwork. Replace with animated 3D GLB characters/vehicles in the 3D renderer phase.
+    // Marcador visual provisional; los modelos 3D animados requieren integrar modelos GLB y renderizador 3D.
     private fun createAvatarBitmap(vehicle: Boolean): Bitmap {
-        val bitmap = Bitmap.createBitmap(96, 112, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.color = Color.rgb(20, 150, 255)
-        canvas.drawCircle(48f, 52f, 39f, paint)
+        paint.color = Color.rgb(20, 115, 210)
+        canvas.drawCircle(64f, 64f, 58f, paint)
         paint.color = Color.WHITE
         paint.textAlign = Paint.Align.CENTER
-        paint.textSize = if (vehicle) 43f else 48f
-        paint.typeface = Typeface.DEFAULT_BOLD
-        canvas.drawText(if (vehicle) "A" else "P", 48f, 68f, paint)
+        paint.textSize = 58f
+        paint.typeface = Typeface.DEFAULT
+        val symbol = selectedModel.substringBefore(" ").ifBlank { if (vehicle) "🚗" else "🚶" }
+        canvas.drawText(symbol, 64f, 84f, paint)
         paint.color = Color.rgb(255, 210, 40)
-        canvas.drawCircle(48f, 103f, 7f, paint)
+        canvas.drawCircle(64f, 121f, 5f, paint)
         return bitmap
     }
 
