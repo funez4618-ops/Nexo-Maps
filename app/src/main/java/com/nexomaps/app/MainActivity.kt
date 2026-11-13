@@ -47,6 +47,7 @@ import org.maplibre.android.style.expressions.Expression
 import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -439,35 +440,60 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun searchPlace(query: String, makeRoute: Boolean = false) {
-        status.text = "Buscando: $query"
+        status.text = "Buscando ubicaciones: $query"
         Thread {
+            var connection: HttpURLConnection? = null
             try {
-                if (!Geocoder.isPresent()) throw Exception("El servicio de búsqueda no está disponible en este dispositivo")
-                @Suppress("DEPRECATION")
-                val results = Geocoder(this, Locale.getDefault()).getFromLocationName(query, 1)
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val url = URL("https://photon.komoot.io/api/?q=" + encoded + "&limit=6&lang=es")
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 12000
+                    readTimeout = 15000
+                    setRequestProperty("User-Agent", "NexoMaps/1.0 (Android map search)")
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (connection.responseCode !in 200..299) throw Exception("El buscador no respondió")
+                val data = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                val features = data.optJSONArray("features") ?: org.json.JSONArray()
+                val results = mutableListOf<Pair<String, LatLng>>()
+                for (i in 0 until features.length()) {
+                    val feature = features.getJSONObject(i)
+                    val coordinates = feature.optJSONObject("geometry")?.optJSONArray("coordinates") ?: continue
+                    if (coordinates.length() < 2) continue
+                    val lon = coordinates.optDouble(0, Double.NaN)
+                    val lat = coordinates.optDouble(1, Double.NaN)
+                    if (lat.isNaN() || lon.isNaN()) continue
+                    val p = feature.optJSONObject("properties") ?: JSONObject()
+                    val title = listOf("name", "street", "housenumber").mapNotNull { key -> p.optString(key).takeIf { it.isNotBlank() && it != "null" } }.distinct().joinToString(" ")
+                    val context = listOf("district", "city", "state", "country", "postcode").mapNotNull { key -> p.optString(key).takeIf { it.isNotBlank() && it != "null" } }.distinct().joinToString(", ")
+                    val label = listOf(title.ifBlank { query }, context).filter { it.isNotBlank() }.joinToString(" · ")
+                    results.add(label to LatLng(lat, lon))
+                }
                 runOnUiThread {
-                    val place = results?.firstOrNull()
-                    if (place != null) {
-                        val point = LatLng(place.latitude, place.longitude)
-                        currentDestinationName = query
-                        currentDestinationPoint = point
-                        rememberHistory(query)
-                        updateDestinationMarker(point, query)
-                        map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 14.0))
-                        if (makeRoute) requestRoute(point, query)
-                        val label = place.locality ?: place.subAdminArea ?: place.countryName ?: query
-                        status.text = "Resultado: $label"
+                    if (results.isEmpty()) {
+                        status.text = "No se encontraron resultados para: $query"
+                        Toast.makeText(this, "Prueba agregando colonia, ciudad o código postal.", Toast.LENGTH_LONG).show()
                     } else {
-                        status.text = "No se encontró: $query"
-                        Toast.makeText(this, "No se encontró ese lugar. Prueba con otra búsqueda.", Toast.LENGTH_LONG).show()
+                        AlertDialog.Builder(this).setTitle("Elige la ubicación correcta")
+                            .setItems(results.map { it.first }.toTypedArray()) { _, which ->
+                                val (label, point) = results[which]
+                                currentDestinationName = label
+                                currentDestinationPoint = point
+                                rememberHistory(query)
+                                updateDestinationMarker(point, label)
+                                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 17.0))
+                                if (makeRoute) requestRoute(point, label)
+                                status.text = "Ubicación seleccionada · " + point.latitude + ", " + point.longitude
+                            }.setNegativeButton("Cancelar", null).show()
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    status.text = "No se pudo completar la búsqueda"
-                    Toast.makeText(this, e.message ?: "Comprueba tu conexión a Internet", Toast.LENGTH_LONG).show()
+                    status.text = "No se pudo buscar la ubicación"
+                    Toast.makeText(this, e.message ?: "Comprueba tu conexión a Internet.", Toast.LENGTH_LONG).show()
                 }
-            }
+            } finally { connection?.disconnect() }
         }.start()
     }
 
