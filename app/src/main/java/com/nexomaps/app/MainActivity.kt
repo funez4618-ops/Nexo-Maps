@@ -226,7 +226,9 @@ class MainActivity : AppCompatActivity() {
             readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) { loadedStyle ->
                 add3DBuildings(loadedStyle)
                 readyMap.animateCamera(
-                    CameraPosition.Builder().target(LatLng(19.4326, -99.1332)).zoom(5.0).build()
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition.Builder().target(LatLng(19.4326, -99.1332)).zoom(5.0).build()
+                    )
                 )
                 status.text = "Mapa listo · Pulsa GPS para encontrar tu ubicación"
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
