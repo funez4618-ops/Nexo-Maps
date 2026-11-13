@@ -54,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     private var isTilted = false
     private var userMarker: Marker? = null
     private var routeLine: Polyline? = null
+    private var destinationMarker: Marker? = null
+    private var lastRoutePoints: List<LatLng> = emptyList()
     private var lastKnownPoint: LatLng? = null
     private var isVehicleMode = false
     private var selectedModel = "🚶 Hombre"
@@ -247,6 +249,7 @@ class MainActivity : AppCompatActivity() {
                 6 -> {
                     routeLine?.let { map?.removePolyline(it) }
                     routeLine = null
+                    lastRoutePoints = emptyList()
                     lastRouteInstructions = emptyList()
                     status.text = "Ruta borrada"
                 }
@@ -304,6 +307,12 @@ class MainActivity : AppCompatActivity() {
                     lastKnownPoint?.let { point ->
                         userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))))
                     }
+                    currentDestinationPoint?.let { point ->
+                        destinationMarker = map?.addMarker(MarkerOptions().position(point).title(currentDestinationName ?: "Destino"))
+                    }
+                    if (lastRoutePoints.size >= 2) {
+                        routeLine = map?.addPolyline(PolylineOptions().addAll(lastRoutePoints).color(Color.rgb(25, 125, 255)).width(6f))
+                    }
                     status.text = "${mapStyles[which]} activado"
                 }
                 dialog.dismiss()
@@ -350,6 +359,7 @@ class MainActivity : AppCompatActivity() {
                     val point = LatLng(parts[1].toDoubleOrNull() ?: 0.0, parts[2].toDoubleOrNull() ?: 0.0)
                     currentDestinationName = parts[0]
                     currentDestinationPoint = point
+                    updateDestinationMarker(point, parts[0])
                     map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 15.0))
                     requestRoute(point, parts[0])
                 }
@@ -414,6 +424,7 @@ class MainActivity : AppCompatActivity() {
                         currentDestinationName = query
                         currentDestinationPoint = point
                         rememberHistory(query)
+                        updateDestinationMarker(point, query)
                         map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 14.0))
                         if (makeRoute) requestRoute(point, query)
                         val label = place.locality ?: place.subAdminArea ?: place.countryName ?: query
@@ -477,6 +488,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (points.size >= 2) {
                         routeLine?.let { map?.removePolyline(it) }
+                        lastRoutePoints = points.toList()
                         routeLine = map?.addPolyline(PolylineOptions().addAll(points).color(Color.rgb(25, 125, 255)).width(6f))
                         lastRouteInstructions = instructions
                         map?.animateCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.fromLatLngs(points), 72))
@@ -569,14 +581,27 @@ class MainActivity : AppCompatActivity() {
         return bitmap
     }
 
+    private fun updateDestinationMarker(point: LatLng, name: String) {
+        destinationMarker?.let { map?.removeMarker(it) }
+        destinationMarker = map?.addMarker(MarkerOptions().position(point).title(name).snippet("Destino seleccionado"))
+    }
+
     private fun zoomBy(amount: Double) {
-        val current = map?.cameraPosition ?: return
+        val current = map?.cameraPosition
+        if (current == null) {
+            Toast.makeText(this, "El mapa todavía se está cargando.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val nextZoom = (current.zoom + amount).coerceIn(1.0, 20.0)
         map?.animateCamera(CameraUpdateFactory.zoomTo(nextZoom))
     }
 
     private fun toggleTilt() {
-        val current = map?.cameraPosition ?: return
+        val current = map?.cameraPosition
+        if (current == null) {
+            Toast.makeText(this, "El mapa todavía se está cargando.", Toast.LENGTH_SHORT).show()
+            return
+        }
         isTilted = !isTilted
         map?.animateCamera(CameraUpdateFactory.newCameraPosition(
             CameraPosition.Builder().target(current.target ?: LatLng(20.0, 0.0))
@@ -588,7 +613,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetNorth() {
-        val current = map?.cameraPosition ?: return
+        val current = map?.cameraPosition
+        if (current == null) {
+            Toast.makeText(this, "El mapa todavía se está cargando.", Toast.LENGTH_SHORT).show()
+            return
+        }
         isTilted = false
         map?.animateCamera(CameraUpdateFactory.newCameraPosition(
             CameraPosition.Builder().target(current.target ?: LatLng(20.0, 0.0))
