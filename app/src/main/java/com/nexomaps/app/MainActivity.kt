@@ -2,6 +2,7 @@ package com.nexomaps.app
 
 import android.Manifest
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -59,6 +60,11 @@ class MainActivity : AppCompatActivity() {
     private var isTracking = false
     private lateinit var tripTime: TextView
     private var tripStartedAt: Long? = null
+    private lateinit var preferences: SharedPreferences
+    private var currentDestinationName: String? = null
+    private var currentDestinationPoint: LatLng? = null
+    private val mapStyles = arrayOf("Mapa estándar", "Mapa claro", "Mapa Liberty")
+    private val mapStyleUrls = arrayOf("https://demotiles.maplibre.org/style.json", "https://tiles.openfreemap.org/styles/positron", "https://tiles.openfreemap.org/styles/liberty")
     private val timerHandler = Handler(Looper.getMainLooper())
     private val timerTick = object : Runnable {
         override fun run() {
@@ -107,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         MapLibre.getInstance(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        preferences = getSharedPreferences("nexo_maps_settings", Context.MODE_PRIVATE)
 
         val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(12, 20, 38)) }
         mapView = MapView(this)
@@ -151,6 +158,15 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showModelPicker() }
         }
         header.addView(modelButton, LinearLayout.LayoutParams(-1, 46).apply { topMargin = 6 })
+        val optionsButton = Button(this).apply {
+            text = "★  Favoritos     ·     ⚙  Opciones"
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(27, 43, 68))
+            setOnClickListener { showOptionsDialog() }
+        }
+        header.addView(optionsButton, LinearLayout.LayoutParams(-1, 42).apply { topMargin = 5 })
         root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
             setMargins(12, 12, 12, 0)
         })
@@ -190,7 +206,7 @@ class MainActivity : AppCompatActivity() {
             readyMap.uiSettings.isRotateGesturesEnabled = true
             readyMap.uiSettings.isZoomGesturesEnabled = true
             readyMap.uiSettings.isScrollGesturesEnabled = true
-            readyMap.setStyle(Style.Builder().fromUri("https://demotiles.maplibre.org/style.json")) {
+            readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) {
                 readyMap.animateCamera(
                     CameraUpdateFactory.newCameraPosition(
                         CameraPosition.Builder().target(LatLng(20.0, 0.0)).zoom(1.8).build()
@@ -213,6 +229,88 @@ class MainActivity : AppCompatActivity() {
         parent.addView(button, LinearLayout.LayoutParams(0, 48, 1f).apply {
             setMargins(3, 0, 3, 0)
         })
+    }
+
+
+    private fun showOptionsDialog() {
+        val options = arrayOf("Cambiar apariencia del mapa", "Mis lugares favoritos", "Búsquedas recientes", "Guardar destino actual en favoritos", "Borrar ruta del mapa", "Acerca de Nexo Maps")
+        AlertDialog.Builder(this).setTitle("Nexo Maps · Opciones").setItems(options) { _, which ->
+            when (which) {
+                0 -> showMapStylePicker()
+                1 -> showSavedPlaces("favorites", "Mis lugares favoritos")
+                2 -> showSavedPlaces("history", "Búsquedas recientes")
+                3 -> saveCurrentFavorite()
+                4 -> {
+                    routeLine?.let { map?.removePolyline(it) }
+                    routeLine = null
+                    status.text = "Ruta borrada"
+                }
+                5 -> AlertDialog.Builder(this).setTitle("Nexo Maps").setMessage(
+                    "Navegación y exploración con mapa interactivo, GPS, búsqueda, rutas, favoritos e historial.\n\nLas rutas son estimaciones y no incluyen tráfico en vivo. Los semáforos y modelos 3D reales aún requieren fuentes y motores compatibles."
+                ).setPositiveButton("Entendido", null).show()
+            }
+        }.setNegativeButton("Cerrar", null).show()
+    }
+
+    private fun showMapStylePicker() {
+        val selected = preferences.getInt("map_style", 0).coerceIn(0, mapStyles.lastIndex)
+        AlertDialog.Builder(this).setTitle("Apariencia del mapa")
+            .setSingleChoiceItems(mapStyles, selected) { dialog, which ->
+                preferences.edit().putInt("map_style", which).apply()
+                val camera = map?.cameraPosition
+                status.text = "Cambiando a ${mapStyles[which]}..."
+                map?.setStyle(Style.Builder().fromUri(mapStyleUrls[which])) {
+                    if (camera != null) map?.cameraPosition = camera
+                    lastKnownPoint?.let { point ->
+                        userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))))
+                    }
+                    status.text = "${mapStyles[which]} activado"
+                }
+                dialog.dismiss()
+            }.setNegativeButton("Cerrar", null).show()
+    }
+
+    private fun rememberHistory(query: String) {
+        val history = preferences.getStringSet("history", emptySet())?.toMutableList() ?: mutableListOf()
+        history.remove(query)
+        history.add(0, query)
+        preferences.edit().putStringSet("history", history.take(15).toSet()).apply()
+    }
+
+    private fun saveCurrentFavorite() {
+        val name = currentDestinationName
+        val point = currentDestinationPoint
+        if (name == null || point == null) {
+            Toast.makeText(this, "Primero busca un lugar para guardarlo.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val favorites = preferences.getStringSet("favorites", emptySet())?.toMutableSet() ?: mutableSetOf()
+        favorites.add("${name}|${point.latitude}|${point.longitude}")
+        preferences.edit().putStringSet("favorites", favorites).apply()
+        Toast.makeText(this, "Lugar guardado en favoritos", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showSavedPlaces(key: String, title: String) {
+        val saved = preferences.getStringSet(key, emptySet())?.toList()?.sorted() ?: emptyList()
+        if (saved.isEmpty()) {
+            val message = if (key == "favorites") "Todavía no tienes favoritos. Busca un lugar y usa Opciones → Guardar destino actual en favoritos." else "Todavía no hay búsquedas recientes."
+            AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("Aceptar", null).show()
+            return
+        }
+        val labels = saved.map { entry -> if (key == "favorites") entry.substringBefore("|") else entry }.toTypedArray()
+        AlertDialog.Builder(this).setTitle(title).setItems(labels) { _, which ->
+            val entry = saved[which]
+            if (key == "favorites") {
+                val parts = entry.split("|")
+                if (parts.size == 3) {
+                    val point = LatLng(parts[1].toDoubleOrNull() ?: 0.0, parts[2].toDoubleOrNull() ?: 0.0)
+                    currentDestinationName = parts[0]
+                    currentDestinationPoint = point
+                    map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 15.0))
+                    requestRoute(point, parts[0])
+                }
+            } else searchPlace(entry, false)
+        }.setNegativeButton("Cerrar", null).show()
     }
 
     private fun showModelPicker() {
@@ -269,6 +367,9 @@ class MainActivity : AppCompatActivity() {
                     val place = results?.firstOrNull()
                     if (place != null) {
                         val point = LatLng(place.latitude, place.longitude)
+                        currentDestinationName = query
+                        currentDestinationPoint = point
+                        rememberHistory(query)
                         map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 14.0))
                         if (makeRoute) requestRoute(point, query)
                         val label = place.locality ?: place.subAdminArea ?: place.countryName ?: query
