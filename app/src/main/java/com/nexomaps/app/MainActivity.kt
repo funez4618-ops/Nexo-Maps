@@ -253,6 +253,40 @@ class MainActivity : AppCompatActivity() {
         }.setNegativeButton("Cerrar", null).show()
     }
 
+    private fun showDistanceUnits() {
+        val units = arrayOf("Kilómetros (km)", "Millas (mi)")
+        val selected = preferences.getInt("distance_unit", 0).coerceIn(0, 1)
+        AlertDialog.Builder(this).setTitle("Unidades de distancia")
+            .setSingleChoiceItems(units, selected) { dialog, which ->
+                preferences.edit().putInt("distance_unit", which).apply()
+                dialog.dismiss()
+                Toast.makeText(this, "Unidad actualizada para las próximas rutas.", Toast.LENGTH_SHORT).show()
+            }.setNegativeButton("Cerrar", null).show()
+    }
+
+    private fun showRouteInstructions() {
+        if (lastRouteInstructions.isEmpty()) {
+            Toast.makeText(this, "Primero calcula una ruta.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle("Indicaciones de ruta")
+            .setItems(lastRouteInstructions.toTypedArray(), null)
+            .setPositiveButton("Cerrar", null).show()
+    }
+
+    private fun shareCurrentDestination() {
+        val name = currentDestinationName
+        val point = currentDestinationPoint
+        if (name == null || point == null) {
+            Toast.makeText(this, "Primero busca un destino.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, name + " https://www.openstreetmap.org/?mlat=" + point.latitude + "&mlon=" + point.longitude)
+        }
+        startActivity(android.content.Intent.createChooser(share, "Compartir destino"))
+    }
     private fun showMapStylePicker() {
         val selected = preferences.getInt("map_style", 0).coerceIn(0, mapStyles.lastIndex)
         AlertDialog.Builder(this).setTitle("Apariencia del mapa")
