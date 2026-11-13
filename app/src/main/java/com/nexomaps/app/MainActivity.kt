@@ -34,10 +34,15 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.annotations.Polyline
+import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var mapView: MapView
@@ -47,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private val locationPermissionRequest = 4102
     private var isTilted = false
     private var userMarker: Marker? = null
+    private var routeLine: Polyline? = null
+    private var lastKnownPoint: LatLng? = null
     private var isVehicleMode = false
     private var selectedModel = "🚶 Hombre"
     private var isTracking = false
@@ -77,6 +84,7 @@ class MainActivity : AppCompatActivity() {
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             val point = LatLng(location.latitude, location.longitude)
+            lastKnownPoint = point
             // Speed-based mode suggestion: walking below 5.5 m/s, vehicle above it.
             val detectedVehicle = selectedModel !in listOf("🚶 Hombre", "🚶‍♀️ Mujer")
             if (detectedVehicle != isVehicleMode) {
@@ -237,15 +245,20 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Buscar en Nexo Maps")
             .setView(input)
             .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Buscar") { _, _ ->
+            .setPositiveButton("Trazar ruta") { _, _ ->
                 val query = input.text.toString().trim()
-                if (query.isNotEmpty()) searchPlace(query)
-                else Toast.makeText(this, "Escribe un lugar o dirección", Toast.LENGTH_SHORT).show()
+                if (query.isNotEmpty()) searchPlace(query, true)
+                else Toast.makeText(this, "Escribe un destino", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Ver lugar") { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.isNotEmpty()) searchPlace(query, false)
+                else Toast.makeText(this, "Escribe un lugar", Toast.LENGTH_SHORT).show()
             }
             .show()
     }
 
-    private fun searchPlace(query: String) {
+    private fun searchPlace(query: String, makeRoute: Boolean = false) {
         status.text = "Buscando: $query"
         Thread {
             try {
@@ -257,6 +270,7 @@ class MainActivity : AppCompatActivity() {
                     if (place != null) {
                         val point = LatLng(place.latitude, place.longitude)
                         map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 14.0))
+                        if (makeRoute) requestRoute(point, query)
                         val label = place.locality ?: place.subAdminArea ?: place.countryName ?: query
                         status.text = "Resultado: $label"
                     } else {
@@ -273,6 +287,36 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun requestRoute(destination: LatLng, destinationName: String) {
+        val origin = lastKnownPoint ?: map?.cameraPosition?.target
+        if (origin == null) { Toast.makeText(this, "Activa Seguir para obtener tu ubicación.", Toast.LENGTH_LONG).show(); return }
+        status.text = "Calculando ruta hacia $destinationName..."
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL("https://router.project-osrm.org/route/v1/driving/" + origin.longitude + "," + origin.latitude + ";" + destination.longitude + "," + destination.latitude + "?overview=full&geometries=geojson")
+                connection = (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET"; connectTimeout = 15000; readTimeout = 20000; setRequestProperty("User-Agent", "NexoMaps/0.1 Android") }
+                if (connection.responseCode !in 200..299) throw Exception("El servicio de rutas no respondió")
+                val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                if (root.optString("code") != "Ok") throw Exception("No se encontró una ruta")
+                val route = root.getJSONArray("routes").getJSONObject(0)
+                val minutes = (route.getDouble("duration") / 60.0).toInt().coerceAtLeast(1)
+                val km = route.getDouble("distance") / 1000.0
+                val coordinates = route.getJSONObject("geometry").getJSONArray("coordinates")
+                val points = ArrayList<LatLng>()
+                for (i in 0 until coordinates.length()) { val pair = coordinates.getJSONArray(i); points.add(LatLng(pair.getDouble(1), pair.getDouble(0))) }
+                runOnUiThread {
+                    if (points.size >= 2) {
+                        routeLine?.let { map?.removePolyline(it) }
+                        routeLine = map?.addPolyline(PolylineOptions().addAll(points).color(Color.rgb(25, 125, 255)).width(6f))
+                        map?.animateCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.fromLatLngs(points), 72))
+                        status.text = String.format(Locale.getDefault(), "Ruta: %.1f km · aprox. %d min (sin tráfico en vivo)", km, minutes)
+                    }
+                }
+            } catch (e: Exception) { runOnUiThread { status.text = "No se pudo calcular la ruta"; Toast.makeText(this, e.message ?: "Comprueba tu conexión.", Toast.LENGTH_LONG).show() } }
+            finally { connection?.disconnect() }
+        }.start()
+    }
     private fun goToMyLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
