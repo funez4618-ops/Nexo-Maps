@@ -1,46 +1,58 @@
 package com.nexomaps.app
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.setPadding
+import androidx.core.app.ActivityCompat
 import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     private lateinit var mapView: MapView
+    private var map: MapLibreMap? = null
+    private lateinit var status: TextView
+    private lateinit var locationManager: LocationManager
+    private val locationPermissionRequest = 4102
+    private var isTilted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MapLibre.getInstance(this)
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(12, 20, 38))
-        }
-
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(12, 20, 38)) }
         mapView = MapView(this)
         mapView.onCreate(savedInstanceState)
-        root.addView(
-            mapView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
+        root.addView(mapView, FrameLayout.LayoutParams(-1, -1))
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(18)
+            setPadding(18, 14, 18, 14)
             setBackgroundColor(Color.rgb(16, 27, 53))
             elevation = 12f
         }
-
         val brand = TextView(this).apply {
             text = "NEXO MAPS"
             textSize = 19f
@@ -48,95 +60,202 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.16f
         }
         header.addView(brand)
-
         val subtitle = TextView(this).apply {
             text = "Explora el mundo a tu manera"
             textSize = 12f
             setTextColor(Color.rgb(170, 190, 215))
-            setPadding(0, 5, 0, 10)
+            setPadding(0, 4, 0, 10)
         }
         header.addView(subtitle)
-
-        val search = TextView(this).apply {
-            text = "⌕   Buscar lugares o direcciones"
+        val search = Button(this).apply {
+            text = "⌕   Buscar ciudad, lugar o dirección"
+            isAllCaps = false
             textSize = 15f
-            setTextColor(Color.rgb(225, 235, 248))
-            setPadding(16)
-            setBackgroundColor(Color.rgb(35, 49, 76))
-        }
-        header.addView(search)
-
-        root.addView(
-            header,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP
-            ).apply {
-                setMargins(14, 14, 14, 0)
-            }
-        )
-
-        val status = TextView(this).apply {
-            text = "Mapa interactivo · OpenStreetMap"
-            textSize = 12f
             setTextColor(Color.WHITE)
-            setPadding(14)
-            setBackgroundColor(Color.rgb(16, 27, 53))
-            alpha = 0.94f
+            setBackgroundColor(Color.rgb(42, 61, 91))
+            setOnClickListener { showSearchDialog() }
         }
-        root.addView(
-            status,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                bottomMargin = 22
-            }
-        )
+        header.addView(search, LinearLayout.LayoutParams(-1, 50))
+        root.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            setMargins(12, 12, 12, 0)
+        })
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(6, 8, 6, 8)
+            setBackgroundColor(Color.rgb(16, 27, 53))
+            elevation = 12f
+        }
+        addControl(controls, "Mi ubicación") { goToMyLocation() }
+        addControl(controls, "−") { zoomBy(-1.0) }
+        addControl(controls, "+") { zoomBy(1.0) }
+        addControl(controls, "Vista 3D") { toggleTilt() }
+        addControl(controls, "Norte") { resetNorth() }
+        root.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            setMargins(10, 0, 10, 16)
+        })
+
+        status = TextView(this).apply {
+            text = "Mapa mundial · OpenStreetMap"
+            textSize = 11f
+            setTextColor(Color.WHITE)
+            setPadding(12, 8, 12, 8)
+            setBackgroundColor(Color.rgb(16, 27, 53))
+            alpha = 0.95f
+        }
+        root.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = 78
+        })
 
         setContentView(root)
-
-        mapView.getMapAsync { map ->
-            map.setStyle(
-                Style.Builder().fromUri("https://demotiles.maplibre.org/style.json")
-            )
+        mapView.getMapAsync { readyMap ->
+            map = readyMap
+            readyMap.uiSettings.isCompassEnabled = true
+            readyMap.uiSettings.isRotateGesturesEnabled = true
+            readyMap.uiSettings.isZoomGesturesEnabled = true
+            readyMap.uiSettings.isScrollGesturesEnabled = true
+            readyMap.setStyle(Style.Builder().fromUri("https://demotiles.maplibre.org/style.json")) {
+                readyMap.animateCamera(
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition.Builder().target(LatLng(20.0, 0.0)).zoom(1.8).build()
+                    )
+                )
+                status.text = "Mapa mundial cargado · Usa los controles"
+            }
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        mapView.onStart()
+    private fun addControl(parent: LinearLayout, label: String, action: () -> Unit) {
+        val button = Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = if (label.length > 4) 10f else 16f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(35, 49, 76))
+            setOnClickListener { action() }
+        }
+        parent.addView(button, LinearLayout.LayoutParams(0, 48, 1f).apply {
+            setMargins(3, 0, 3, 0)
+        })
     }
 
-    override fun onResume() {
-        super.onResume()
-        mapView.onResume()
+    private fun showSearchDialog() {
+        val input = EditText(this).apply {
+            hint = "Ej. Ciudad de México, Torre Eiffel..."
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Buscar en Nexo Maps")
+            .setView(input)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Buscar") { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.isNotEmpty()) searchPlace(query)
+                else Toast.makeText(this, "Escribe un lugar o dirección", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
-    override fun onPause() {
-        mapView.onPause()
-        super.onPause()
+    private fun searchPlace(query: String) {
+        status.text = "Buscando: $query"
+        Thread {
+            try {
+                if (!Geocoder.isPresent()) throw Exception("El servicio de búsqueda no está disponible en este dispositivo")
+                @Suppress("DEPRECATION")
+                val results = Geocoder(this, Locale.getDefault()).getFromLocationName(query, 1)
+                runOnUiThread {
+                    val place = results?.firstOrNull()
+                    if (place != null) {
+                        val point = LatLng(place.latitude, place.longitude)
+                        map?.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 14.0))
+                        val label = place.locality ?: place.subAdminArea ?: place.countryName ?: query
+                        status.text = "Resultado: $label"
+                    } else {
+                        status.text = "No se encontró: $query"
+                        Toast.makeText(this, "No se encontró ese lugar. Prueba con otra búsqueda.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "No se pudo completar la búsqueda"
+                    Toast.makeText(this, e.message ?: "Comprueba tu conexión a Internet", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
-    override fun onStop() {
-        mapView.onStop()
-        super.onStop()
+    private fun goToMyLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                locationPermissionRequest
+            )
+            return
+        }
+        try {
+            val providers = locationManager.getProviders(true)
+            var best: Location? = null
+            for (provider in providers) {
+                val candidate = locationManager.getLastKnownLocation(provider) ?: continue
+                if (best == null || candidate.accuracy < best.accuracy) best = candidate
+            }
+            if (best != null) {
+                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(best.latitude, best.longitude), 16.0))
+                status.text = "Mostrando tu ubicación aproximada"
+            } else {
+                status.text = "Esperando señal GPS..."
+                Toast.makeText(this, "Activa la ubicación/GPS y vuelve a intentarlo.", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: SecurityException) {
+            Toast.makeText(this, "Permiso de ubicación no concedido", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    override fun onLowMemory() {
-        super.onLowMemory()
-        mapView.onLowMemory()
+    private fun zoomBy(amount: Double) {
+        val current = map?.cameraPosition ?: return
+        val nextZoom = (current.zoom + amount).coerceIn(1.0, 20.0)
+        map?.animateCamera(CameraUpdateFactory.zoomTo(nextZoom))
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        mapView.onSaveInstanceState(outState)
+    private fun toggleTilt() {
+        val current = map?.cameraPosition ?: return
+        isTilted = !isTilted
+        map?.animateCamera(CameraUpdateFactory.newCameraPosition(
+            CameraPosition.Builder().target(current.target ?: LatLng(20.0, 0.0))
+                .zoom(current.zoom.coerceAtLeast(14.0))
+                .tilt(if (isTilted) 55.0 else 0.0)
+                .bearing(current.bearing).build()
+        ))
+        status.text = if (isTilted) "Perspectiva inclinada activada" else "Vista superior activada"
     }
 
-    override fun onDestroy() {
-        mapView.onDestroy()
-        super.onDestroy()
+    private fun resetNorth() {
+        val current = map?.cameraPosition ?: return
+        isTilted = false
+        map?.animateCamera(CameraUpdateFactory.newCameraPosition(
+            CameraPosition.Builder().target(current.target ?: LatLng(20.0, 0.0))
+                .zoom(current.zoom).tilt(0.0).bearing(0.0).build()
+        ))
+        status.text = "Orientación norte · Vista superior"
     }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == locationPermissionRequest && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
+            goToMyLocation()
+        } else if (requestCode == locationPermissionRequest) {
+            Toast.makeText(this, "Necesitas permitir la ubicación para usar este botón.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onStart() { super.onStart(); mapView.onStart() }
+    override fun onResume() { super.onResume(); mapView.onResume() }
+    override fun onPause() { mapView.onPause(); super.onPause() }
+    override fun onStop() { mapView.onStop(); super.onStop() }
+    override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
+    override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
+    override fun onDestroy() { mapView.onDestroy(); super.onDestroy() }
 }
