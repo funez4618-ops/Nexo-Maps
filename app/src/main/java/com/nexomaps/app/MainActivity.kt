@@ -150,30 +150,37 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 4, 0, 10)
         }
         header.addView(subtitle)
-        val search = Button(this).apply {
-            text = "⌕   Buscar ciudad, lugar o dirección"
-            isAllCaps = false
-            textSize = 15f
+        val search = TextView(this).apply {
+            text = "⌕   BUSCAR CIUDAD, LUGAR O DIRECCIÓN"
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 0, 12, 0)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(42, 61, 91))
+            isClickable = true
+            isFocusable = true
             setOnClickListener { showSearchDialog() }
         }
         header.addView(search, LinearLayout.LayoutParams(-1, 50))
-        val modelButton = Button(this).apply {
-            text = "🚘  Elegir personaje o vehículo"
-            isAllCaps = false
-            textSize = 14f
+        val modelButton = TextView(this).apply {
+            text = "🚘  PERSONAJE O VEHÍCULO"
+            textSize = 13f
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(35, 49, 76))
+            isClickable = true
+            isFocusable = true
             setOnClickListener { showModelPicker() }
         }
         header.addView(modelButton, LinearLayout.LayoutParams(-1, 46).apply { topMargin = 6 })
-        val optionsButton = Button(this).apply {
-            text = "★  Favoritos     ·     ⚙  Opciones"
-            isAllCaps = false
+        val optionsButton = TextView(this).apply {
+            text = "★  FAVORITOS       ·       ⚙  OPCIONES"
             textSize = 13f
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(27, 43, 68))
+            isClickable = true
+            isFocusable = true
             setOnClickListener { showOptionsDialog() }
         }
         header.addView(optionsButton, LinearLayout.LayoutParams(-1, 42).apply { topMargin = 5 })
@@ -219,11 +226,13 @@ class MainActivity : AppCompatActivity() {
             readyMap.setStyle(Style.Builder().fromUri(mapStyleUrls[preferences.getInt("map_style", 0).coerceIn(0, mapStyleUrls.lastIndex)])) { loadedStyle ->
                 add3DBuildings(loadedStyle)
                 readyMap.animateCamera(
-                    CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.Builder().target(LatLng(20.0, 0.0)).zoom(1.8).build()
-                    )
+                    CameraPosition.Builder().target(LatLng(19.4326, -99.1332)).zoom(5.0).build()
                 )
-                status.text = "Mapa mundial cargado · Activa Seguir para moverte"
+                status.text = "Mapa listo · Pulsa GPS para encontrar tu ubicación"
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    goToMyLocation()
+                }
             }
         }
     }
@@ -251,12 +260,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addControl(parent: LinearLayout, label: String, action: () -> Unit) {
-        val button = Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = if (label.length > 4) 10f else 16f
+        val button = TextView(this).apply {
+            text = when (label) {
+                "Seguir / Pausar" -> "GPS"
+                "Vista 3D" -> "3D"
+                else -> label
+            }
+            textSize = if (label.length > 4) 12f else 17f
+            gravity = Gravity.CENTER
+            setPadding(2, 0, 2, 0)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(35, 49, 76))
+            isClickable = true
+            isFocusable = true
             setOnClickListener { action() }
         }
         parent.addView(button, LinearLayout.LayoutParams(0, 48, 1f).apply {
