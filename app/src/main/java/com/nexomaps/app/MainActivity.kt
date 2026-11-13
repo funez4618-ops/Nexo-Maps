@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
                 val camera = map?.cameraPosition
                 status.text = "Cambiando a ${mapStyles[which]}..."
                 map?.setStyle(Style.Builder().fromUri(mapStyleUrls[which])) {
-                    if (camera != null) map?.cameraPosition = camera
+                    if (camera != null) map?.animateCamera(CameraUpdateFactory.newCameraPosition(camera))
                     lastKnownPoint?.let { point ->
                         userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))))
                     }
@@ -271,10 +271,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rememberHistory(query: String) {
-        val history = preferences.getStringSet("history", emptySet())?.toMutableList() ?: mutableListOf()
+        val history = preferences.getString("history_ordered", "")?.split("\\n")?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
         history.remove(query)
         history.add(0, query)
-        preferences.edit().putStringSet("history", history.take(15).toSet()).apply()
+        preferences.edit().putString("history_ordered", history.take(15).joinToString("\\n")).apply()
     }
 
     private fun saveCurrentFavorite() {
@@ -291,7 +291,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSavedPlaces(key: String, title: String) {
-        val saved = preferences.getStringSet(key, emptySet())?.toList()?.sorted() ?: emptyList()
+        val saved = if (key == "history") {
+            preferences.getString("history_ordered", "")?.split("\\n")?.filter { it.isNotBlank() } ?: emptyList()
+        } else {
+            preferences.getStringSet(key, emptySet())?.toList()?.sorted() ?: emptyList()
+        }
         if (saved.isEmpty()) {
             val message = if (key == "favorites") "Todavía no tienes favoritos. Busca un lugar y usa Opciones → Guardar destino actual en favoritos." else "Todavía no hay búsquedas recientes."
             AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("Aceptar", null).show()
