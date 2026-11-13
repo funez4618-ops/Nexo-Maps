@@ -195,14 +195,21 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(16, 27, 53))
             elevation = 12f
         }
-        addControl(controls, "Seguir / Pausar") { toggleFollow() }
-        addControl(controls, "−") { zoomBy(-1.0) }
+        addControl(controls, "GPS") { toggleFollow() }
         addControl(controls, "+") { zoomBy(1.0) }
-        addControl(controls, "Vista 3D") { toggleTilt() }
+        addControl(controls, "−") { zoomBy(-1.0) }
+        addControl(controls, "3D") { toggleTilt() }
         addControl(controls, "Norte") { resetNorth() }
-        root.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-            setMargins(10, 0, 10, 16)
+        // Los controles quedan arriba del mapa, justo debajo del encabezado,
+        // para que no los tape la barra de navegación del teléfono.
+        root.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            setMargins(10, 0, 10, 0)
         })
+        header.post {
+            val params = controls.layoutParams as FrameLayout.LayoutParams
+            params.topMargin = header.bottom + (8 * resources.displayMetrics.density).toInt()
+            controls.layoutParams = params
+        }
 
         status = TextView(this).apply {
             text = "Mapa mundial · OpenStreetMap"
