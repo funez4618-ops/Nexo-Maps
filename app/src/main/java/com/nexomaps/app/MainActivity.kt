@@ -3,6 +3,9 @@ package com.nexomaps.app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Color
 import android.location.Geocoder
 import android.location.Location
@@ -24,6 +27,9 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.annotations.Marker
+import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
@@ -36,6 +42,31 @@ class MainActivity : AppCompatActivity() {
     private lateinit var locationManager: LocationManager
     private val locationPermissionRequest = 4102
     private var isTilted = false
+    private var userMarker: Marker? = null
+    private var isVehicleMode = false
+    private var isTracking = false
+
+    private val gpsListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            val point = LatLng(location.latitude, location.longitude)
+            // Speed-based mode suggestion: walking below 5.5 m/s, vehicle above it.
+            val detectedVehicle = location.hasSpeed() && location.speed >= 5.5f
+            if (detectedVehicle != isVehicleMode) {
+                isVehicleMode = detectedVehicle
+                refreshUserMarker(point)
+                status.text = if (isVehicleMode) "Modo vehículo · movimiento detectado" else "Modo peatón · caminando"
+            }
+            if (userMarker == null) {
+                userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this@MainActivity).fromBitmap(createAvatarBitmap(isVehicleMode))))
+            } else {
+                userMarker?.position = point
+            }
+            if (isTracking) map?.animateCamera(CameraUpdateFactory.newLatLng(point))
+            if (location.speed < 0.7f) status.text = "Detenido · ubicación actualizada"
+            else if (!isVehicleMode) status.text = "Modo peatón · siguiendo tu caminata"
+            else status.text = "Modo vehículo · siguiendo tu recorrido"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,7 +118,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(16, 27, 53))
             elevation = 12f
         }
-        addControl(controls, "Mi ubicación") { goToMyLocation() }
+        addControl(controls, "Seguir") { goToMyLocation() }
         addControl(controls, "−") { zoomBy(-1.0) }
         addControl(controls, "+") { zoomBy(1.0) }
         addControl(controls, "Vista 3D") { toggleTilt() }
@@ -121,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                         CameraPosition.Builder().target(LatLng(20.0, 0.0)).zoom(1.8).build()
                     )
                 )
-                status.text = "Mapa mundial cargado · Usa los controles"
+                status.text = "Mapa mundial cargado · Activa Seguir para moverte"
             }
         }
     }
@@ -204,7 +235,12 @@ class MainActivity : AppCompatActivity() {
             }
             if (best != null) {
                 map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(best.latitude, best.longitude), 16.0))
-                status.text = "Mostrando tu ubicación aproximada"
+                isTracking = true
+                startGpsUpdates()
+                val point = LatLng(best.latitude, best.longitude)
+                if (userMarker == null) userMarker = map?.addMarker(MarkerOptions().position(point).icon(IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(false))))
+                else userMarker?.position = point
+                status.text = "Ubicación encontrada · siguiendo tu movimiento"
             } else {
                 status.text = "Esperando señal GPS..."
                 Toast.makeText(this, "Activa la ubicación/GPS y vuelve a intentarlo.", Toast.LENGTH_LONG).show()
@@ -214,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun zoomBy(amount: Double) {
+    private fun startGpsUpdates() {\n        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return\n        try {\n            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {\n                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, gpsListener)\n            } else {\n                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2000L, 3f, gpsListener)\n            }\n        } catch (_: Exception) { status.text = "No se pudo iniciar el seguimiento GPS" }\n    }\n\n    private fun refreshUserMarker(point: LatLng) {\n        val icon = IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))\n        if (userMarker == null) userMarker = map?.addMarker(MarkerOptions().position(point).icon(icon))\n        else { userMarker?.position = point; userMarker?.icon = icon }\n    }\n\n    // Temporary map marker artwork. Replace with animated 3D GLB characters/vehicles in the 3D renderer phase.\n    private fun createAvatarBitmap(vehicle: Boolean): Bitmap {\n        val bitmap = Bitmap.createBitmap(96, 112, Bitmap.Config.ARGB_8888)\n        val canvas = Canvas(bitmap)\n        val paint = Paint(Paint.ANTI_ALIAS_FLAG)\n        paint.color = Color.rgb(20, 150, 255)\n        canvas.drawCircle(48f, 52f, 39f, paint)\n        paint.color = Color.WHITE\n        paint.textAlign = Paint.Align.CENTER\n        paint.textSize = if (vehicle) 43f else 48f\n        paint.typeface = Typeface.DEFAULT_BOLD\n        canvas.drawText(if (vehicle) "A" else "P", 48f, 68f, paint)\n        paint.color = Color.rgb(255, 210, 40)\n        canvas.drawCircle(48f, 103f, 7f, paint)\n        return bitmap\n    }\n\n    private fun zoomBy(amount: Double) {
         val current = map?.cameraPosition ?: return
         val nextZoom = (current.zoom + amount).coerceIn(1.0, 20.0)
         map?.animateCamera(CameraUpdateFactory.zoomTo(nextZoom))
@@ -251,7 +287,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onStart() { super.onStart(); mapView.onStart() }
+    override fun onStart() { super.onStart(); mapView.onStart() }\n    override fun onPause() { if (::locationManager.isInitialized) locationManager.removeUpdates(gpsListener); super.onPause(); mapView.onPause() }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { mapView.onPause(); super.onPause() }
     override fun onStop() { mapView.onStop(); super.onStop() }
