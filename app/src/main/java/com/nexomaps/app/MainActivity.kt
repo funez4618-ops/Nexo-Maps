@@ -13,6 +13,9 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -46,6 +49,29 @@ class MainActivity : AppCompatActivity() {
     private var userMarker: Marker? = null
     private var isVehicleMode = false
     private var isTracking = false
+    private lateinit var tripTime: TextView
+    private var tripStartedAt: Long? = null
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private val timerTick = object : Runnable {
+        override fun run() {
+            val started = tripStartedAt ?: return
+            val elapsed = ((SystemClock.elapsedRealtime() - started) / 1000L).coerceAtLeast(0L)
+            val hours = elapsed / 3600L
+            val minutes = (elapsed % 3600L) / 60L
+            val seconds = elapsed % 60L
+            tripTime.text = if (hours > 0) String.format(Locale.getDefault(), "Recorrido: %02d:%02d:%02d", hours, minutes, seconds)
+                else String.format(Locale.getDefault(), "Recorrido: %02d:%02d", minutes, seconds)
+            timerHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private fun startTripTimer() {
+        if (tripStartedAt == null) {
+            tripStartedAt = SystemClock.elapsedRealtime()
+            timerHandler.removeCallbacks(timerTick)
+            timerHandler.post(timerTick)
+        }
+    }
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -328,5 +354,5 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() { mapView.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
-    override fun onDestroy() { mapView.onDestroy(); super.onDestroy() }
+    override fun onDestroy() { timerHandler.removeCallbacks(timerTick); locationManager.removeUpdates(gpsListener); mapView.onDestroy(); super.onDestroy() }
 }
