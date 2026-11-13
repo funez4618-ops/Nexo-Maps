@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.Color
 import android.location.Geocoder
 import android.location.Location
@@ -250,7 +251,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startGpsUpdates() {\n        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return\n        try {\n            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {\n                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, gpsListener)\n            } else {\n                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2000L, 3f, gpsListener)\n            }\n        } catch (_: Exception) { status.text = "No se pudo iniciar el seguimiento GPS" }\n    }\n\n    private fun refreshUserMarker(point: LatLng) {\n        val icon = IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))\n        if (userMarker == null) userMarker = map?.addMarker(MarkerOptions().position(point).icon(icon))\n        else { userMarker?.position = point; userMarker?.icon = icon }\n    }\n\n    // Temporary map marker artwork. Replace with animated 3D GLB characters/vehicles in the 3D renderer phase.\n    private fun createAvatarBitmap(vehicle: Boolean): Bitmap {\n        val bitmap = Bitmap.createBitmap(96, 112, Bitmap.Config.ARGB_8888)\n        val canvas = Canvas(bitmap)\n        val paint = Paint(Paint.ANTI_ALIAS_FLAG)\n        paint.color = Color.rgb(20, 150, 255)\n        canvas.drawCircle(48f, 52f, 39f, paint)\n        paint.color = Color.WHITE\n        paint.textAlign = Paint.Align.CENTER\n        paint.textSize = if (vehicle) 43f else 48f\n        paint.typeface = Typeface.DEFAULT_BOLD\n        canvas.drawText(if (vehicle) "A" else "P", 48f, 68f, paint)\n        paint.color = Color.rgb(255, 210, 40)\n        canvas.drawCircle(48f, 103f, 7f, paint)\n        return bitmap\n    }\n\n    private fun zoomBy(amount: Double) {
+    private fun startGpsUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, gpsListener)
+            } else {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2000L, 3f, gpsListener)
+            }
+        } catch (_: Exception) { status.text = "No se pudo iniciar el seguimiento GPS" }
+    }
+
+    private fun refreshUserMarker(point: LatLng) {
+        val icon = IconFactory.getInstance(this).fromBitmap(createAvatarBitmap(isVehicleMode))
+        if (userMarker == null) userMarker = map?.addMarker(MarkerOptions().position(point).icon(icon))
+        else { userMarker?.position = point; userMarker?.icon = icon }
+    }
+
+    // Temporary map marker artwork. Replace with animated 3D GLB characters/vehicles in the 3D renderer phase.
+    private fun createAvatarBitmap(vehicle: Boolean): Bitmap {
+        val bitmap = Bitmap.createBitmap(96, 112, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.color = Color.rgb(20, 150, 255)
+        canvas.drawCircle(48f, 52f, 39f, paint)
+        paint.color = Color.WHITE
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = if (vehicle) 43f else 48f
+        paint.typeface = Typeface.DEFAULT_BOLD
+        canvas.drawText(if (vehicle) "A" else "P", 48f, 68f, paint)
+        paint.color = Color.rgb(255, 210, 40)
+        canvas.drawCircle(48f, 103f, 7f, paint)
+        return bitmap
+    }
+
+    private fun zoomBy(amount: Double) {
         val current = map?.cameraPosition ?: return
         val nextZoom = (current.zoom + amount).coerceIn(1.0, 20.0)
         map?.animateCamera(CameraUpdateFactory.zoomTo(nextZoom))
@@ -287,9 +322,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onStart() { super.onStart(); mapView.onStart() }\n    override fun onPause() { if (::locationManager.isInitialized) locationManager.removeUpdates(gpsListener); super.onPause(); mapView.onPause() }
+    override fun onStart() { super.onStart(); mapView.onStart() }
+    override fun onPause() { if (::locationManager.isInitialized) locationManager.removeUpdates(gpsListener); super.onPause(); mapView.onPause() }
     override fun onResume() { super.onResume(); mapView.onResume() }
-    override fun onPause() { mapView.onPause(); super.onPause() }
     override fun onStop() { mapView.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
