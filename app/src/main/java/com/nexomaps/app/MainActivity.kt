@@ -446,6 +446,30 @@ class MainActivity : AppCompatActivity() {
                 val route = root.getJSONArray("routes").getJSONObject(0)
                 val minutes = (route.getDouble("duration") / 60.0).toInt().coerceAtLeast(1)
                 val km = route.getDouble("distance") / 1000.0
+                val instructions = mutableListOf<String>()
+                val legs = route.optJSONArray("legs")
+                if (legs != null && legs.length() > 0) {
+                    val steps = legs.getJSONObject(0).optJSONArray("steps")
+                    if (steps != null) for (i in 0 until steps.length()) {
+                        val step = steps.getJSONObject(i)
+                        val maneuver = step.optJSONObject("maneuver")
+                        val type = maneuver?.optString("type", "continue") ?: "continue"
+                        val modifier = maneuver?.optString("modifier", "") ?: ""
+                        val road = step.optString("name").ifBlank { "la vía" }
+                        val meters = step.optDouble("distance", 0.0)
+                        val distanceLabel = if (meters >= 1000) String.format(Locale.getDefault(), "%.1f km", meters / 1000.0) else meters.toInt().toString() + " m"
+                        val action = when (type) {
+                            "depart" -> "Inicia el recorrido"
+                            "arrive" -> "Llegada a tu destino"
+                            "turn" -> "Gira " + modifier
+                            "roundabout", "rotary" -> "Entra a la glorieta"
+                            "merge" -> "Incorpórate"
+                            "fork" -> "Toma la bifurcación " + modifier
+                            else -> "Continúa"
+                        }
+                        instructions.add(action + " por " + road + " · " + distanceLabel)
+                    }
+                }
                 val coordinates = route.getJSONObject("geometry").getJSONArray("coordinates")
                 val points = ArrayList<LatLng>()
                 for (i in 0 until coordinates.length()) { val pair = coordinates.getJSONArray(i); points.add(LatLng(pair.getDouble(1), pair.getDouble(0))) }
@@ -453,8 +477,12 @@ class MainActivity : AppCompatActivity() {
                     if (points.size >= 2) {
                         routeLine?.let { map?.removePolyline(it) }
                         routeLine = map?.addPolyline(PolylineOptions().addAll(points).color(Color.rgb(25, 125, 255)).width(6f))
+                        lastRouteInstructions = instructions
                         map?.animateCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.fromLatLngs(points), 72))
-                        status.text = String.format(Locale.getDefault(), "Ruta: %.1f km · aprox. %d min (sin tráfico en vivo)", km, minutes)
+                        val miles = preferences.getInt("distance_unit", 0) == 1
+                        val distance = if (miles) km * 0.621371 else km
+                        val unit = if (miles) "mi" else "km"
+                        status.text = String.format(Locale.getDefault(), "Ruta: %.1f %s · aprox. %d min · instrucciones disponibles", distance, unit, minutes)
                     }
                 }
             } catch (e: Exception) { runOnUiThread { status.text = "No se pudo calcular la ruta"; Toast.makeText(this, e.message ?: "Comprueba tu conexión.", Toast.LENGTH_LONG).show() } }
