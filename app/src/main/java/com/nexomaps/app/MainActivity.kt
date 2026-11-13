@@ -234,19 +234,23 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun showOptionsDialog() {
-        val options = arrayOf("Cambiar apariencia del mapa", "Mis lugares favoritos", "Búsquedas recientes", "Guardar destino actual en favoritos", "Borrar ruta del mapa", "Acerca de Nexo Maps")
+        val options = arrayOf("Cambiar apariencia del mapa", "Unidades de distancia", "Mis lugares favoritos", "Búsquedas recientes", "Guardar destino actual en favoritos", "Ver instrucciones de la última ruta", "Borrar ruta del mapa", "Compartir destino actual", "Acerca de Nexo Maps")
         AlertDialog.Builder(this).setTitle("Nexo Maps · Opciones").setItems(options) { _, which ->
             when (which) {
                 0 -> showMapStylePicker()
-                1 -> showSavedPlaces("favorites", "Mis lugares favoritos")
-                2 -> showSavedPlaces("history", "Búsquedas recientes")
-                3 -> saveCurrentFavorite()
-                4 -> {
+                1 -> showDistanceUnits()
+                2 -> showSavedPlaces("favorites", "Mis lugares favoritos")
+                3 -> showSavedPlaces("history", "Búsquedas recientes")
+                4 -> saveCurrentFavorite()
+                5 -> showRouteInstructions()
+                6 -> {
                     routeLine?.let { map?.removePolyline(it) }
                     routeLine = null
+                    lastRouteInstructions = emptyList()
                     status.text = "Ruta borrada"
                 }
-                5 -> AlertDialog.Builder(this).setTitle("Nexo Maps").setMessage(
+                7 -> shareCurrentDestination()
+                8 -> AlertDialog.Builder(this).setTitle("Nexo Maps").setMessage(
                     "Navegación y exploración con mapa interactivo, GPS, búsqueda, rutas, favoritos e historial.\n\nLas rutas son estimaciones y no incluyen tráfico en vivo. Los semáforos y modelos 3D reales aún requieren fuentes y motores compatibles."
                 ).setPositiveButton("Entendido", null).show()
             }
