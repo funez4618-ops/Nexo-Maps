@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var preferences: SharedPreferences
     private var currentDestinationName: String? = null
     private var currentDestinationPoint: LatLng? = null
+    private var lastRouteInstructions: List<String> = emptyList()
     private val mapStyles = arrayOf("Mapa estándar", "Mapa claro", "Mapa Liberty")
     private val mapStyleUrls = arrayOf("https://demotiles.maplibre.org/style.json", "https://tiles.openfreemap.org/styles/positron", "https://tiles.openfreemap.org/styles/liberty")
     private val timerHandler = Handler(Looper.getMainLooper())
@@ -399,7 +400,7 @@ class MainActivity : AppCompatActivity() {
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                val url = URL("https://router.project-osrm.org/route/v1/driving/" + origin.longitude + "," + origin.latitude + ";" + destination.longitude + "," + destination.latitude + "?overview=full&geometries=geojson")
+                val url = URL("https://router.project-osrm.org/route/v1/driving/" + origin.longitude + "," + origin.latitude + ";" + destination.longitude + "," + destination.latitude + "?overview=full&geometries=geojson&steps=true")
                 connection = (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET"; connectTimeout = 15000; readTimeout = 20000; setRequestProperty("User-Agent", "NexoMaps/0.1 Android") }
                 if (connection.responseCode !in 200..299) throw Exception("El servicio de rutas no respondió")
                 val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
